@@ -5,6 +5,7 @@ import './App.css'
 
 /**
  * App: Componente raíz que envuelve el Router
+ * Aguilar, Almeida, Cueva
  */
 function App() {
   return (
