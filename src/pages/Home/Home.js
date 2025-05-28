@@ -4,10 +4,10 @@ import { generateGeminiContent } from "../../services/geminiService"
 import "./Home.css"
 import { Clipboard, FileText, ArrowRight, RefreshCw } from "lucide-react"
 
-const FIXED_PROMPT = `Conectate a internet y Genera un caso de estudio real o ficticio de 300-500 palabras sobre una empresa que implementa ISO 9001.  
+const FIXED_PROMPT = `Conectate a internet y Genera un caso de estudio real o ficticio de 500-1000 palabras sobre una empresa que implementa ISO 9001.  
 Incluye contexto (sector, tamaño, ubicación), problemas ambientales identificados (emisiones, residuos, consumo de recursos), 
-acciones tomadas para cumplir con ISO 9001(auditorías, políticas, objetivos ambientales) y 
-resultados obtenidos (reducción de impacto ambiental, certificación, etc.). 
+acciones tomadas para cumplir con ISO 9001(auditorías, políticas, objetivos ambientales), no me indiques resultados ni nada por estilo, solo quiero 
+el caso de estudio completo...
 El caso debe ser coherente, relevante para ISO 9001, y no contener información contradictoria. 
 Toma en cuenta que cada que se genere un caso no quiero que se repita mas de 2 o 3 veces el caso
 Escribe el texto en español.`
@@ -32,7 +32,7 @@ const Home = () => {
   }
 
   const handleStartTest = () => {
-    navigate("/test")
+    navigate("/resolver")
   }
 
   const handleCopyText = () => {
