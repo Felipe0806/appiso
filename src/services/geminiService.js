@@ -36,30 +36,55 @@ export async function generateGeminiContent(prompt) {
  * @returns {Promise<Object>} - Objeto con porcentaje y análisis detallado.
  */
 export async function compareResolutions(resolucionIA, resolucionUsuario) {
-  const prompt = `Compara la siguiente resolución realizada por una IA y una resolución escrita por un usuario humano. Analiza similitudes en el razonamiento, la lógica de resolución, la estructura y el cumplimiento de los principios de ISO 9001.
+  const prompt = `Eres un evaluador experto en ISO 9001. Debes comparar una resolución de referencia (IA) con la resolución de un estudiante.
 
-Evalúa los siguientes aspectos:
-1. Comprensión del problema (0-25 puntos)
-2. Aplicación correcta de ISO 9001 (0-25 puntos)
-3. Estructura y organización (0-25 puntos)
-4. Completitud de la solución (0-25 puntos)
+CRITERIOS DE EVALUACIÓN ESTRICTOS:
 
-Resolución de la IA:
+1. RELEVANCIA TEMÁTICA (CRÍTICO): 
+   - Si la resolución del usuario NO trata sobre ISO 9001, calidad, procesos empresariales o temas relacionados, la puntuación DEBE ser 0-5%.
+   - Si contiene texto irrelevante (comida, deportes, temas personales, etc.), penalizar severamente.
+
+2. COMPRENSIÓN DEL PROBLEMA (0-25 puntos):
+   - ¿Identifica correctamente los problemas del caso?
+   - ¿Comprende el contexto empresarial?
+
+3. APLICACIÓN DE ISO 9001 (0-25 puntos):
+   - ¿Aplica correctamente los principios y requisitos de ISO 9001?
+   - ¿Menciona cláusulas o conceptos específicos relevantes?
+
+4. ESTRUCTURA Y ORGANIZACIÓN (0-25 puntos):
+   - ¿Presenta una respuesta organizada y coherente?
+   - ¿Sigue una lógica clara de implementación?
+
+5. COMPLETITUD DE LA SOLUCIÓN (0-25 puntos):
+   - ¿Proporciona una solución completa y práctica?
+   - ¿Incluye pasos de implementación y seguimiento?
+
+REGLAS DE PUNTUACIÓN:
+- Si el texto es completamente irrelevante al tema: 0-5%
+- Si es parcialmente relevante pero muy deficiente: 5-25%
+- Si es relevante pero con errores importantes: 25-50%
+- Si es bueno pero mejorable: 50-75%
+- Si es excelente: 75-100%
+
+Resolución de REFERENCIA (IA):
 ${resolucionIA}
 
-Resolución del usuario:
+Resolución del ESTUDIANTE:
 ${resolucionUsuario}
 
-IMPORTANTE: Responde EXACTAMENTE en este formato JSON (sin texto adicional):
+IMPORTANTE: Sé MUY ESTRICTO. Si la resolución del estudiante no trata sobre ISO 9001 o es irrelevante, asigna puntuaciones muy bajas (0-5%).
+
+Responde EXACTAMENTE en este formato JSON:
 {
-  "porcentaje": 85,
-  "puntuacion_comprension": 20,
-  "puntuacion_iso9001": 22,
-  "puntuacion_estructura": 18,
-  "puntuacion_completitud": 20,
-  "fortalezas": ["Punto fuerte 1", "Punto fuerte 2"],
-  "areas_mejora": ["Área de mejora 1", "Área de mejora 2"],
-  "detalle": "Análisis detallado de la comparación explicando las similitudes y diferencias encontradas."
+  "porcentaje": 0,
+  "puntuacion_comprension": 0,
+  "puntuacion_iso9001": 0,
+  "puntuacion_estructura": 0,
+  "puntuacion_completitud": 0,
+  "fortalezas": ["Lista de fortalezas encontradas"],
+  "areas_mejora": ["Lista de áreas que necesitan mejora"],
+  "detalle": "Análisis detallado explicando por qué se asignó esta puntuación, especialmente si es baja por irrelevancia temática."
 }`;
 
   try {
@@ -73,7 +98,19 @@ IMPORTANTE: Responde EXACTAMENTE en este formato JSON (sin texto adicional):
       
       // Validar que tiene las propiedades necesarias
       if (parsedResult.porcentaje !== undefined && parsedResult.detalle) {
-        return parsedResult;
+        // Validación adicional: si el porcentaje es muy alto pero las puntuaciones individuales son bajas
+        const totalPuntuacion = (parsedResult.puntuacion_comprension || 0) + 
+                               (parsedResult.puntuacion_iso9001 || 0) + 
+                               (parsedResult.puntuacion_estructura || 0) + 
+                               (parsedResult.puntuacion_completitud || 0);
+        
+        // Recalcular porcentaje basado en puntuaciones individuales para mayor consistencia
+        const porcentajeCalculado = Math.round((totalPuntuacion / 100) * 100);
+        
+        return {
+          ...parsedResult,
+          porcentaje: Math.min(parsedResult.porcentaje, porcentajeCalculado) // Tomar el menor para ser más estricto
+        };
       } else {
         throw new Error('Formato de respuesta inválido');
       }
@@ -97,18 +134,21 @@ function extractPercentageFromText(text) {
   const percentageMatch = text.match(/(\d+)%/);
   const percentage = percentageMatch ? parseInt(percentageMatch[1]) : 0;
   
+  // Si no se encuentra un porcentaje válido y el texto parece irrelevante, asignar 0
+  const finalPercentage = percentage > 0 ? percentage : 0;
+  
   // Buscar sección de justificación
   const justificationMatch = text.match(/justificación:?\s*(.*)/i);
   const justification = justificationMatch ? justificationMatch[1].trim() : text;
   
   return {
-    porcentaje: percentage,
+    porcentaje: finalPercentage,
     detalle: justification,
     fortalezas: [],
-    areas_mejora: [],
-    puntuacion_comprension: Math.round(percentage * 0.25),
-    puntuacion_iso9001: Math.round(percentage * 0.25),
-    puntuacion_estructura: Math.round(percentage * 0.25),
-    puntuacion_completitud: Math.round(percentage * 0.25)
+    areas_mejora: ["La respuesta no parece estar relacionada con ISO 9001 o gestión de calidad"],
+    puntuacion_comprension: Math.round(finalPercentage * 0.25),
+    puntuacion_iso9001: Math.round(finalPercentage * 0.25),
+    puntuacion_estructura: Math.round(finalPercentage * 0.25),
+    puntuacion_completitud: Math.round(finalPercentage * 0.25)
   };
 }
