@@ -1,8 +1,49 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { compareResolutions, generateGeminiContent } from "../../services/geminiService"
-import { ArrowLeft, BarChart3, CheckCircle, AlertCircle, RefreshCw, User, Bot, Send } from "lucide-react"
+import { ArrowLeft, BarChart3, CheckCircle, AlertCircle, RefreshCw, User, Bot, Send, Download } from "lucide-react"
 import "./Resolver.css"
+
+// Importar jsPDF - Asegúrate de instalarlo con: npm install jspdf
+import jsPDF from 'jspdf'
+
+// Componente para renderizar markdown
+const MarkdownRenderer = ({ text }) => {
+  const formatMarkdown = (text) => {
+    if (!text) return ""
+    
+    // Convertir **texto** a <strong>texto</strong>
+    let formatted = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    
+    // Convertir *texto* a <em>texto</em>  
+    formatted = formatted.replace(/\*(.*?)\*/g, '<em>$1</em>')
+    
+    // Convertir ### Título a <h3>
+    formatted = formatted.replace(/^### (.*$)/gm, '<h3>$1</h3>')
+    
+    // Convertir ## Título a <h2>
+    formatted = formatted.replace(/^## (.*$)/gm, '<h2>$1</h2>')
+    
+    // Convertir # Título a <h1>
+    formatted = formatted.replace(/^# (.*$)/gm, '<h1>$1</h1>')
+    
+    // Convertir saltos de línea a <br>
+    formatted = formatted.replace(/\n/g, '<br>')
+    
+    // Convertir listas con -
+    formatted = formatted.replace(/^- (.*$)/gm, '<li>$1</li>')
+    formatted = formatted.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
+    
+    return formatted
+  }
+
+  return (
+    <div 
+      className="markdown-content"
+      dangerouslySetInnerHTML={{ __html: formatMarkdown(text) }}
+    />
+  )
+}
 
 const Resolver = () => {
   const [aiResolution, setAiResolution] = useState("")
@@ -11,10 +52,26 @@ const Resolver = () => {
   const [generatingAI, setGeneratingAI] = useState(false)
   const [comparing, setComparing] = useState(false)
   const [step, setStep] = useState("user") // "user", "ai", "compare"
+  const [caseData, setCaseData] = useState(null)
   const navigate = useNavigate()
 
-  const caso = localStorage.getItem("casoISO9001")
-  
+  useEffect(() => {
+    // Intentar cargar desde el nuevo formato primero
+    const storedCase = localStorage.getItem("casoISO9001")
+    if (storedCase) {
+      try {
+        const parsedCase = JSON.parse(storedCase)
+        setCaseData(parsedCase)
+      } catch (error) {
+        // Si falla el parseo, asumir que es el formato antiguo (string directo)
+        setCaseData({ content: storedCase, isCustom: false })
+      }
+    } else {
+      navigate("/")
+      return
+    }
+  }, [navigate])
+
   const promptResolucion = `Resuelve este caso de estudio sobre ISO 9001 de manera detallada y estructurada. Incluye:
 1. Análisis del problema
 2. Aplicación de principios ISO 9001
@@ -22,14 +79,7 @@ const Resolver = () => {
 4. Resultados esperados
 
 Caso de estudio:
-${caso}`
-
-  useEffect(() => {
-    if (!caso) {
-      navigate("/")
-      return
-    }
-  }, [caso, navigate])
+${caseData?.content || ""}`
 
   const handleGenerateAI = async () => {
     if (!userResolution.trim()) {
@@ -71,6 +121,214 @@ ${caso}`
     setStep("user")
   }
 
+  // Función para limpiar texto de markdown para PDF
+  const cleanTextForPDF = (text) => {
+    if (!text) return ""
+    
+    return text
+      .replace(/\*\*(.*?)\*\*/g, '$1') // Quitar negritas
+      .replace(/\*(.*?)\*/g, '$1')     // Quitar cursivas
+      .replace(/#{1,6}\s*(.*)/g, '$1') // Quitar headers markdown
+      .replace(/<br>/g, '\n')          // Convertir <br> a saltos de línea
+      .replace(/<[^>]*>/g, '')         // Quitar todas las etiquetas HTML
+      .replace(/\n\s*\n/g, '\n\n')    // Normalizar saltos de línea dobles
+      .trim()
+  }
+
+  // Función para agregar texto con salto de línea automático
+  const addTextWithWrap = (doc, text, x, y, maxWidth, lineHeight = 6) => {
+    const lines = doc.splitTextToSize(text, maxWidth)
+    let currentY = y
+    
+    lines.forEach(line => {
+      if (currentY > 280) { // Si se sale de la página, crear nueva página
+        doc.addPage()
+        currentY = 20
+      }
+      doc.text(line, x, currentY)
+      currentY += lineHeight
+    })
+    
+    return currentY + 5 // Retornar la posición Y final con espacio extra
+  }
+
+  const handleDownloadPDF = () => {
+    try {
+      // Crear nuevo documento PDF
+      const doc = new jsPDF()
+      
+      // Configurar fuente
+      doc.setFont("helvetica")
+      
+      let yPosition = 20
+      
+      // Título principal
+      doc.setFontSize(20)
+      doc.setFont("helvetica", "bold")
+      doc.text("REPORTE COMPLETO - ANÁLISIS CASO ISO 9001", 20, yPosition)
+      yPosition += 15
+      
+      // Línea separadora
+      doc.setLineWidth(0.5)
+      doc.line(20, yPosition, 190, yPosition)
+      yPosition += 10
+      
+      // Caso de estudio
+      doc.setFontSize(16)
+      doc.setFont("helvetica", "bold")
+      doc.text("CASO DE ESTUDIO", 20, yPosition)
+      yPosition += 10
+      
+      doc.setFontSize(10)
+      doc.setFont("helvetica", "normal")
+      const cleanedCase = cleanTextForPDF(caseData?.content || "")
+      yPosition = addTextWithWrap(doc, cleanedCase, 20, yPosition, 170)
+      
+      // Resolución del usuario
+      if (yPosition > 250) {
+        doc.addPage()
+        yPosition = 20
+      }
+      
+      doc.setFontSize(16)
+      doc.setFont("helvetica", "bold")
+      doc.text("RESOLUCIÓN DEL USUARIO", 20, yPosition)
+      yPosition += 10
+      
+      doc.setFontSize(10)
+      doc.setFont("helvetica", "normal")
+      const cleanedUserResolution = cleanTextForPDF(userResolution)
+      yPosition = addTextWithWrap(doc, cleanedUserResolution, 20, yPosition, 170)
+      
+      // Resolución de la IA
+      if (yPosition > 250) {
+        doc.addPage()
+        yPosition = 20
+      }
+      
+      doc.setFontSize(16)
+      doc.setFont("helvetica", "bold")
+      doc.text("RESOLUCIÓN DE LA IA", 20, yPosition)
+      yPosition += 10
+      
+      doc.setFontSize(10)
+      doc.setFont("helvetica", "normal")
+      const cleanedAIResolution = cleanTextForPDF(aiResolution)
+      yPosition = addTextWithWrap(doc, cleanedAIResolution, 20, yPosition, 170)
+      
+      // Resultados de la comparación
+      if (comparisonResult) {
+        if (yPosition > 200) {
+          doc.addPage()
+          yPosition = 20
+        }
+        
+        doc.setFontSize(16)
+        doc.setFont("helvetica", "bold")
+        doc.text("RESULTADOS DE LA COMPARACIÓN", 20, yPosition)
+        yPosition += 15
+        
+        // Porcentaje de similitud
+        doc.setFontSize(14)
+        doc.setFont("helvetica", "bold")
+        doc.text(`Porcentaje de similitud: ${comparisonResult.porcentaje || 0}%`, 20, yPosition)
+        yPosition += 15
+        
+        // Puntuaciones detalladas
+        doc.setFontSize(12)
+        doc.text("Puntuaciones detalladas:", 20, yPosition)
+        yPosition += 8
+        
+        doc.setFontSize(10)
+        doc.setFont("helvetica", "normal")
+        doc.text(`• Comprensión del problema: ${comparisonResult.puntuacion_comprension || 0}/25`, 25, yPosition)
+        yPosition += 6
+        doc.text(`• Aplicación ISO 9001: ${comparisonResult.puntuacion_iso9001 || 0}/25`, 25, yPosition)
+        yPosition += 6
+        doc.text(`• Estructura y organización: ${comparisonResult.puntuacion_estructura || 0}/25`, 25, yPosition)
+        yPosition += 6
+        doc.text(`• Completitud de la solución: ${comparisonResult.puntuacion_completitud || 0}/25`, 25, yPosition)
+        yPosition += 15
+        
+        // Fortalezas
+        if (comparisonResult.fortalezas && comparisonResult.fortalezas.length > 0) {
+          doc.setFontSize(12)
+          doc.setFont("helvetica", "bold")
+          doc.text("Fortalezas identificadas:", 20, yPosition)
+          yPosition += 8
+          
+          doc.setFontSize(10)
+          doc.setFont("helvetica", "normal")
+          comparisonResult.fortalezas.forEach(fortaleza => {
+            if (yPosition > 280) {
+              doc.addPage()
+              yPosition = 20
+            }
+            yPosition = addTextWithWrap(doc, `• ${fortaleza}`, 25, yPosition, 165)
+          })
+          yPosition += 5
+        }
+        
+        // Áreas de mejora
+        if (comparisonResult.areas_mejora && comparisonResult.areas_mejora.length > 0) {
+          doc.setFontSize(12)
+          doc.setFont("helvetica", "bold")
+          doc.text("Áreas de mejora:", 20, yPosition)
+          yPosition += 8
+          
+          doc.setFontSize(10)
+          doc.setFont("helvetica", "normal")
+          comparisonResult.areas_mejora.forEach(area => {
+            if (yPosition > 280) {
+              doc.addPage()
+              yPosition = 20
+            }
+            yPosition = addTextWithWrap(doc, `• ${area}`, 25, yPosition, 165)
+          })
+          yPosition += 10
+        }
+        
+        // Análisis detallado
+        if (comparisonResult.detalle) {
+          if (yPosition > 250) {
+            doc.addPage()
+            yPosition = 20
+          }
+          
+          doc.setFontSize(12)
+          doc.setFont("helvetica", "bold")
+          doc.text("Análisis detallado:", 20, yPosition)
+          yPosition += 8
+          
+          doc.setFontSize(10)
+          doc.setFont("helvetica", "normal")
+          const cleanedDetail = cleanTextForPDF(comparisonResult.detalle)
+          yPosition = addTextWithWrap(doc, cleanedDetail, 20, yPosition, 170)
+        }
+      }
+      
+      // Footer en la última página
+      const pageCount = doc.internal.getNumberOfPages()
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i)
+        doc.setFontSize(8)
+        doc.setFont("helvetica", "normal")
+        doc.text(`Generado por ISO 9001 Generator - ${new Date().toLocaleDateString()}`, 20, 290)
+        doc.text(`Página ${i} de ${pageCount}`, 170, 290)
+      }
+      
+      // Descargar el PDF
+      const fileName = `reporte-iso9001-${new Date().toISOString().split('T')[0]}.pdf`
+      doc.save(fileName)
+      
+      alert("Reporte PDF descargado exitosamente")
+      
+    } catch (error) {
+      console.error("Error generando PDF:", error)
+      alert("Error al generar el PDF. Intenta nuevamente.")
+    }
+  }
+
   const getScoreColor = (score, maxScore = 25) => {
     const percentage = (score / maxScore) * 100
     if (percentage >= 80) return "text-green-600"
@@ -84,7 +342,7 @@ ${caso}`
     return "text-red-600"
   }
 
-  if (!caso) {
+  if (!caseData) {
     return (
       <div className="resolver-container">
         <p>No hay caso de estudio disponible. Regresa al inicio para generar uno.</p>
@@ -137,9 +395,14 @@ ${caso}`
       </div>
 
       <div className="caso-display">
-        <h2>Caso de Estudio</h2>
+        <div className="caso-header">
+          <h2>Caso de Estudio</h2>
+          <span className={`case-badge ${caseData.isCustom ? "custom" : "generated"}`}>
+            {caseData.isCustom ? "Personalizado" : "Generado por IA"}
+          </span>
+        </div>
         <div className="caso-content">
-          {caso}
+          <MarkdownRenderer text={caseData.content} />
         </div>
       </div>
 
@@ -204,7 +467,7 @@ Incluye:
                 Tu Resolución
               </h2>
               <div className="resolution-display">
-                {userResolution}
+                <MarkdownRenderer text={userResolution} />
               </div>
             </div>
             
@@ -214,7 +477,7 @@ Incluye:
                 Resolución de la IA
               </h2>
               <div className="resolution-display">
-                {aiResolution}
+                <MarkdownRenderer text={aiResolution} />
               </div>
             </div>
           </div>
@@ -312,10 +575,14 @@ Incluye:
 
             <div className="detailed-analysis">
               <h4>Análisis detallado</h4>
-              <p>{comparisonResult.detalle}</p>
+              <MarkdownRenderer text={comparisonResult.detalle} />
             </div>
 
             <div className="final-actions">
+              <button onClick={handleDownloadPDF} className="btn-download">
+                <Download className="icon" />
+                Descargar Reporte PDF
+              </button>
               <button onClick={handleReset} className="btn-secondary">
                 <RefreshCw className="icon" />
                 Intentar con otro caso
